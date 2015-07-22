@@ -1,0 +1,14 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__.'/../vendor/autoload.php';
+
+$dotenv = new Dotenv\Dotenv(dirname(__DIR__));
+$dotenv->load();
+$dotenv->required(['GITTER_TOKEN', 'GITTER_ROOM', 'IRC_CHANNEL', 'IRC_NICK']);
+
+$bot = new \Webuni\GitterBot\Bot(getenv('IRC_NICK'), getenv('IRC_CHANNEL'));
+$gitter = new \Webuni\GitterBot\Gitter(getenv('GITTER_TOKEN'), getenv('GITTER_ROOM'));
+
+$synchronizer = new \Webuni\GitterBot\GitterIrcSynchronizer($bot, $gitter);
+$synchronizer->run();
