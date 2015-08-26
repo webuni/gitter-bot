@@ -7,8 +7,14 @@ $dotenv = new Dotenv\Dotenv(dirname(__DIR__));
 $dotenv->load();
 $dotenv->required(['GITTER_TOKEN', 'GITTER_ROOM', 'IRC_CHANNEL', 'IRC_NICK']);
 
-$bot = new \Webuni\GitterBot\Bot(getenv('IRC_NICK'), getenv('IRC_CHANNEL'));
-$gitter = new \Webuni\GitterBot\Gitter(getenv('GITTER_TOKEN'), getenv('GITTER_ROOM'));
+$loop = \React\EventLoop\Factory::create();
 
-$synchronizer = new \Webuni\GitterBot\GitterIrcSynchronizer($bot, $gitter);
+$logger = new \Monolog\Logger('gitter-bot');
+$logger->pushHandler(new \Monolog\Handler\StreamHandler('php://stdout', \Monolog\Logger::INFO));
+$logger->pushHandler(new \Monolog\Handler\StreamHandler('php://stderr', \Monolog\Logger::ERROR));
+
+$bot = new \Webuni\GitterBot\Bot(getenv('IRC_NICK'), getenv('IRC_CHANNEL'), $loop, $logger);
+$gitter = new \Webuni\GitterBot\Gitter(getenv('GITTER_TOKEN'), getenv('GITTER_ROOM'), $loop, $logger);
+
+$synchronizer = new \Webuni\GitterBot\GitterIrcSynchronizer($bot, $gitter, $loop, $logger);
 $synchronizer->run();

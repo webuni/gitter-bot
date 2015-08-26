@@ -3,24 +3,43 @@
 namespace Webuni\GitterBot;
 
 use GuzzleHttp\Client;
-use React\Dns\Resolver\Factory as DnsFactory;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\MessageFormatter;
+use GuzzleHttp\Middleware;
+use Psr\Log\LoggerInterface;
 use React\EventLoop\LoopInterface;
+
+use React\Dns\Resolver\Factory as DnsFactory;
 use React\HttpClient\Factory as HttpFactory;
 
 class Gitter
 {
-    private $guzzle;
+    private $client;
+    private $react;
     private $token;
+    private $room;
+    private $logger;
 
-    public function __construct($token, $room)
+    public function __construct($token, $room, LoopInterface $loop, LoggerInterface $logger)
     {
         $this->token = $token;
         $this->room = $room;
+        $this->logger = $logger;
+
+        $handlerStack = HandlerStack::create();
+        $handlerStack->push(Middleware::log($logger, new MessageFormatter(MessageFormatter::SHORT)), 'logger');
+        $this->client = new Client([
+            'base_uri' => 'https://api.gitter.im',
+            'headers' => $this->getHeaders(),
+            'handler' => $handlerStack,
+        ]);
+
+        $this->react = (new HttpFactory())->create($loop, (new DnsFactory())->createCached('8.8.8.8', $loop));
     }
 
     public function getRoom()
     {
-        $rooms = json_decode($this->getGuzzle()->get('/v1/rooms')->getBody());
+        $rooms = json_decode($this->client->get('/v1/rooms')->getBody());
         foreach ($rooms as $room) {
             if ($this->room === $room->name) {
                 return $room;
@@ -32,37 +51,19 @@ class Gitter
 
     public function getUser()
     {
-        $users = json_decode($this->getGuzzle()->get('/v1/user')->getBody());
+        $users = json_decode($this->client->get('/v1/user')->getBody());
 
         return reset($users);
     }
 
     public function postMessage($room, $text)
     {
-        return json_decode($this->getGuzzle()->post('/v1/rooms/'.$room->id.'/chatMessages', ['form_params' => ['text' => $text]])->getBody());
+        return json_decode($this->client->post('/v1/rooms/'.$room->id.'/chatMessages', ['form_params' => ['text' => $text]])->getBody());
     }
 
-    public function getMessagesStream(LoopInterface $loop)
+    public function getMessagesStream()
     {
-        $dnsFactory = new DnsFactory();
-        $dnsResolver = $dnsFactory->createCached('8.8.8.8', $loop);
-
-        $httpFactory = new HttpFactory();
-        $react = $httpFactory->create($loop, $dnsResolver);
-
-        return $react->request('GET', 'https://stream.gitter.im/v1/rooms/'.$this->getRoom()->id.'/chatMessages', $this->getHeaders());
-    }
-
-    private function getGuzzle()
-    {
-        if (null === $this->guzzle) {
-            $this->guzzle = new Client([
-                'base_uri' => 'https://api.gitter.im',
-                'headers' => $this->getHeaders(),
-            ]);
-        }
-
-        return $this->guzzle;
+        return $this->react->request('GET', 'https://stream.gitter.im/v1/rooms/'.$this->getRoom()->id.'/chatMessages', $this->getHeaders());
     }
 
     private function getHeaders()
