@@ -3,18 +3,23 @@
 namespace Webuni\GitterBot;
 
 use Phergie\Irc\Bot\React\Bot as BaseBot;
+use Phergie\Irc\Client\React\Client;
 use Phergie\Irc\Connection;
+use Psr\Log\LoggerInterface;
 use React\EventLoop\LoopInterface;
 
 class Bot extends BaseBot
 {
     private $nick;
     private $channel;
+    private $loop;
 
-    public function __construct($nick, $channel)
+    public function __construct($nick, $channel, LoopInterface $loop, LoggerInterface $logger)
     {
         $this->nick = $nick;
         $this->channel = $channel;
+        $this->loop = $loop;
+
         $this->setConfig([
             'connections' => [
                 new Connection([
@@ -29,6 +34,8 @@ class Bot extends BaseBot
                 new \Phergie\Irc\Plugin\React\Pong\Plugin(),
             ]
         ]);
+
+        $this->setLogger($logger);
     }
 
     public function getChannel()
@@ -41,15 +48,19 @@ class Bot extends BaseBot
         return $this->nick;
     }
 
-    /**
-     * @return LoopInterface
-     */
-    public function getLoop()
+    public function getClient()
     {
-        return $this->getClient()->getLoop();
+        if (null === $this->client) {
+            $client = new Client();
+            $client->setLogger($this->getLogger());
+            $client->setLoop($this->loop);
+            $this->setClient($client);
+        }
+
+        return $this->client;
     }
 
-    public function initialize()
+    /*public function initialize()
     {
         $this->setDependencyOverrides($this->config);
         $this->getPlugins($this->config);
@@ -58,5 +69,5 @@ class Bot extends BaseBot
         foreach ($this->getConnections($this->config) as $connection) {
             $client->addConnection($connection);
         }
-    }
+    }*/
 }

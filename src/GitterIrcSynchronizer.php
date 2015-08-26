@@ -2,6 +2,8 @@
 
 namespace Webuni\GitterBot;
 
+use GuzzleHttp\Psr7\Response;
+
 class GitterIrcSynchronizer
 {
     private $queue;
@@ -19,14 +21,28 @@ class GitterIrcSynchronizer
 
     public function run()
     {
-        $this->bot->initialize();
-        $loop = $this->bot->getLoop();
+        //$this->bot->initialize();
+        $loop = $this->bot->getClient()->getLoop();
 
-        $request = $this->gitter->getMessagesStream($loop);
-        $request->on('response', function ($response) {
+        $stream = $this->gitter->getMessagesStream();
+
+        /*$stream->then(function (Response $response) {
+            echo 'BBB';
             $this->onGitterResponse($response);
+        }, function (\Exception $e) {
+            echo 'XXXXXXXXXXXX'.$e->getMessage();
+        });*/
+
+        $stream->on('response', function ($response) {
+            $response->on('data', function ($data) {
+                dump($data);
+            });
+            //$this->onGitterResponse($response);
         });
-        $request->end();
+        $stream->end();
+
+        $loop->run();
+        return;
 
         $irc = $this->bot->getClient();
         $irc->on('irc.received', function ($message, $write, $connection, $logger) {
@@ -36,28 +52,32 @@ class GitterIrcSynchronizer
             $this->onIrcTick($write);
         });
 
-        $loop->run();
+        $this->bot->run();
     }
 
-    private function onGitterResponse($response)
+    private function onGitterResponse(Response $response)
     {
-        $response->on('data', function ($data) {
-            static $user;
-            if (null === $user) {
-                $user = $this->gitter->getUser();
-            }
+        $body = $response->getBody();
+        $data = '';
+        while (!$body->eof()) {
+            $data .= $body->read(1024);
+        }
 
-            if (!trim($data)) {
-                return;
-            }
+        static $user;
+        if (null === $user) {
+            $user = $this->gitter->getUser();
+        }
 
-            $data = json_decode($data);
-            if (!isset($data->fromUser->username) || $user->username == $data->fromUser->username) {
-                return;
-            }
+        if (!trim($data)) {
+            return;
+        }
 
-            $this->queue->enqueue($data);
-        });
+        $data = json_decode($data);
+        if (!isset($data->fromUser->username) || $user->username == $data->fromUser->username) {
+            return;
+        }
+
+        $this->queue->enqueue($data);
     }
 
     private function onIrcReceived($message)
